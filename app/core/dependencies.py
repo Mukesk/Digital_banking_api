@@ -11,22 +11,36 @@ import uuid
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 ALGORITHM = "HS256"
 
-def get_current_user(db: Session = Depends(get_db)):
-    user = db.query(User).first()
-    if not user:
-        from app.core.security import get_password_hash
-        from app.models.user import RoleEnum
-        user = User(
-            email="admin@test.com", 
-            password_hash=get_password_hash("pass"), 
-            role=RoleEnum.admin
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+        
+    try:
+        parsed_id = uuid.UUID(user_id)
+    except ValueError:
+        raise credentials_exception
+        
+    user = db.query(User).filter(User.id == parsed_id).first()
+    if user is None:
+        raise credentials_exception
     return user
 
 def require_role(role: str):
     def role_checker(current_user: User = Depends(get_current_user)):
+        if current_user.role.value != role and current_user.role != role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Operation not permitted. Required role: {role}"
+            )
         return current_user
     return role_checker

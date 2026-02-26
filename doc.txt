@@ -1,0 +1,608 @@
+
+
+Digital Banking & Loan Management API
+Complete Developer Implementation Prompt
+RESTful API — FastAPI · SQLAlchemy · PostgreSQL · JWT · Docker · Redis
+
+1. Project Overview
+Build a RESTful API for a Digital Banking System with the following capabilities:
+	•	Customers can create accounts, transfer money, and apply for loans
+	•	Bank Officers can approve or reject loan applications
+	•	Admins can monitor transactions and generate reports
+
+1.1 Actors
+Actor
+Responsibilities
+Customer
+Register, login, create accounts, transfer money, apply for loans, view account details
+Bank Officer
+Review loan applications, approve or reject loans, update loan records
+Admin
+Monitor all transactions, generate reports, freeze/delete accounts, delete transactions/loans
+
+1.2 Technology Stack
+Technology
+Purpose
+FastAPI
+Web framework for building REST APIs
+SQLAlchemy
+ORM for database models and queries
+PostgreSQL
+Primary relational database
+JWT (JSON Web Tokens)
+Authentication & authorization
+Docker + Docker Compose
+Containerization and orchestration
+Redis
+Transaction locking and caching
+Alembic
+Database migrations
+Pydantic
+Request/response schema validation
+
+
+2. Project Structure
+Implement the following directory structure exactly:
+
+digital-banking-api/
+├── app/
+│   ├── main.py
+│   ├── core/
+│   │   ├── config.py          # Environment variables & settings
+│   │   ├── database.py        # Engine, SessionLocal, Base
+│   │   ├── security.py        # JWT, password hashing
+│   │   └── dependencies.py    # Common Depends (get_db, get_current_user)
+│   ├── models/                # SQLAlchemy ORM models
+│   │   ├── base.py
+│   │   ├── user.py
+│   │   ├── account.py
+│   │   ├── transaction.py
+│   │   └── loan.py
+│   ├── schemas/               # Pydantic request/response models
+│   │   ├── auth_schema.py
+│   │   ├── user_schema.py
+│   │   ├── account_schema.py
+│   │   ├── transaction_schema.py
+│   │   └── loan_schema.py
+│   ├── repositories/          # Data access layer
+│   │   ├── user_repository.py
+│   │   ├── account_repository.py
+│   │   ├── transaction_repository.py
+│   │   └── loan_repository.py
+│   ├── services/              # Business logic layer
+│   │   ├── auth_service.py
+│   │   ├── user_service.py
+│   │   ├── account_service.py
+│   │   ├── transaction_service.py
+│   │   └── loan_service.py
+│   ├── api/                   # API Layer
+│   │   ├── router.py          # Central router
+│   │   └── routes/
+│   │       ├── auth.py
+│   │       ├── users.py
+│   │       ├── accounts.py
+│   │       ├── transactions.py
+│   │       └── loans.py
+│   ├── middleware/
+│   │   ├── cors.py
+│   │   ├── logging_middleware.py
+│   │   └── rate_limiter.py
+│   ├── exceptions/
+│   │   ├── custom_exceptions.py
+│   │   └── exception_handlers.py
+│   └── utils/
+│       ├── constants.py
+│       └── validators.py
+├── alembic/                   # DB migrations
+├── alembic.ini
+├── tests/
+│   ├── test_auth.py
+│   ├── test_accounts.py
+│   ├── test_transactions.py
+│   └── test_loans.py
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── .env
+└── README.md
+
+
+3. Database Design
+Implement four core tables. Use UUID as the primary key type for all tables. Apply soft deletes where needed (deleted_at timestamp).
+
+3.1 Table: users
+Column
+Type
+Notes
+id
+UUID
+Primary key
+email
+String
+Unique, not null
+password_hash
+String
+Bcrypt hashed password
+role
+Enum
+Values: customer, officer, admin
+
+3.2 Table: accounts
+Column
+Type
+Notes
+id
+UUID
+Primary key
+user_id
+UUID FK → users
+Not null
+account_number
+String
+Unique, auto-generated
+balance
+Float
+Default 0.0
+status
+Enum
+Values: active, frozen
+
+3.3 Table: transactions
+Column
+Type
+Notes
+id
+UUID
+Primary key
+from_account
+UUID FK → accounts
+Nullable for deposits
+to_account
+UUID FK → accounts
+Nullable for withdrawals
+amount
+Float
+Not null, must be > 0
+type
+Enum
+Values: transfer, deposit, withdrawal
+created_at
+Timestamp
+Auto set on insert
+
+3.4 Table: loans
+Column
+Type
+Notes
+id
+UUID
+Primary key
+user_id
+UUID FK → users
+Not null
+amount
+Float
+Requested loan amount
+status
+Enum
+Values: pending, approved, rejected
+interest_rate
+Float
+Set on approval
+
+
+4. Authentication (JWT)
+Implement JWT-based authentication. The token structure must include:
+
+4.1 JWT Token Structure
+Part
+Contents
+Header
+alg: HS256, typ: JWT
+Payload
+sub (user_id), email, role, iat (issued_at), exp (expiry)
+Signature
+HMACSHA256(base64url(header) + base64url(payload), secret)
+
+4.2 Auth Endpoints
+Method
+Endpoint
+Description
+Auth Required
+POST
+/auth/register
+Register a new customer account
+No
+POST
+/auth/login
+Login and receive JWT token
+No
+
+4.3 Security Requirements
+	•	Hash passwords using bcrypt before storing
+	•	JWT tokens must expire (configure expiry via .env)
+	•	All protected endpoints must validate JWT via Authorization: Bearer <token> header
+	•	Role-based access control (RBAC) enforced on every protected route
+
+
+5. Sprint 1 — Account & Transaction APIs
+5.1 Account Endpoints
+
+POST /accounts — Create Bank Account (Customer)
+Request body:
+{ "initial_deposit": 5000 }
+Response:
+{ "account_number": "1234567890", "balance": 5000 }
+
+GET /accounts/{id} — View Account Details (Customer)
+Returns account_id, account_number, balance, status, and created_at for the authenticated customer's account.
+
+PUT /accounts/{id} — Update Account (Customer)
+Allows customers to update their account settings.
+
+DELETE /accounts/{id} — Delete Account (Admin)
+Admin-only endpoint. Hard-deletes or soft-deletes the account.
+
+PUT /accounts/{id}/freeze — Freeze Account (Admin)
+Admin-only. Sets account status to 'frozen'. Frozen accounts cannot send or receive transfers.
+
+5.2 Transaction Endpoints
+
+POST /transactions/transfer — Transfer Money (Customer)
+Request body:
+{ "to_account": "9876543210", "amount": 1000 }
+Response:
+{ "transaction_id": "uuid", "status": "success" }
+Business rules:
+	•	Source account must have sufficient balance
+	•	Both accounts must have status = 'active'
+	•	Use Redis distributed lock to prevent race conditions during concurrent transfers
+	•	Debit from_account and credit to_account atomically (use DB transaction)
+
+GET /transactions — List Transactions (Customer)
+Returns all transactions for the authenticated customer's accounts.
+
+DELETE /transactions/{id} — Delete Transaction (Admin)
+Admin-only. Soft-deletes a transaction record.
+
+5.3 Transaction Workflow
+	•	Customer registers and logs in
+	•	Customer creates an account with initial deposit
+	•	Customer requests fund transfer
+	•	System checks if bank (source account) has sufficient reserves >= pay amount
+	•	If insufficient: return error message
+	•	If sufficient: execute fund transfer
+	•	Identify forex rate if applicable
+	•	Update the ledger / transaction log
+
+5.4 Role-Permission Matrix — Accounts & Transactions
+Method
+Endpoint
+Role
+POST
+/accounts
+Customer
+GET
+/accounts/{id}
+Customer
+PUT
+/accounts/{id}
+Customer
+DELETE
+/accounts/{id}
+Admin
+PUT
+/accounts/{id}/freeze
+Admin
+POST
+/transactions/transfer
+Customer
+GET
+/transactions
+Customer
+DELETE
+/transactions/{id}
+Admin
+
+
+6. Sprint 2 — Loan Management & Role Control
+6.1 Loan Workflow
+	•	Customer submits loan application
+	•	Application reviewed by Bank Officer
+	•	Officer checks customer creditability
+	•	If approved: loan amount disbursed to customer account
+	•	If rejected: customer and manager notified
+	•	Customer pays EMI monthly
+	•	On default: loan recovery process initiated
+
+6.2 Loan Endpoints
+
+POST /loans/apply — Apply for Loan (Customer)
+Request body:
+{ "amount": 500000 }
+Response:
+{ "loan_id": "uuid", "status": "pending" }
+
+PUT /loans/{id}/approve — Approve Loan (Officer Only)
+Response:
+{ "loan_id": "uuid", "status": "approved" }
+
+PUT /loans/{id}/reject — Reject Loan (Officer Only)
+Response:
+{ "loan_id": "uuid", "status": "rejected" }
+
+PUT /loans/{id} — Update Loan (Officer)
+Officer can update loan details such as interest rate.
+
+DELETE /loans/{id} — Delete Loan (Admin)
+Admin-only. Soft-deletes a loan record.
+
+6.3 Admin Reporting Endpoint
+GET /admin/reports — Generate Reports (Admin)
+Response:
+{ "total_accounts": 200, "total_loans": 75, "total_transactions_today": 350 }
+
+6.4 User Profile Endpoints
+Method
+Endpoint
+Role
+PUT
+/users/profile
+Customer
+DELETE
+/users/profile
+Customer
+
+6.5 Role-Permission Matrix — Loans
+Method
+Endpoint
+Role
+POST
+/loans/apply
+Customer
+PUT
+/loans/{id}/approve
+Officer
+PUT
+/loans/{id}/reject
+Officer
+PUT
+/loans/{id}
+Officer
+DELETE
+/loans/{id}
+Admin
+GET
+/admin/reports
+Admin
+
+6.6 RBAC Implementation
+Implement Role-Based Access Control using FastAPI dependency injection:
+	•	Create a require_role(role: str) dependency function
+	•	Inject it in route definitions: Depends(require_role('officer'))
+	•	Return HTTP 403 Forbidden if the authenticated user does not have the required role
+	•	The RBAC flow: Request → Authentication Service → Check Authorized User → Start Session → Check Authorized Role → Allow Operation or Deny
+
+
+7. Integration Test Cases
+Implement the following integration tests in the /tests directory:
+
+7.1 Test Account Creation
+	•	Register a new customer via POST /auth/register
+	•	Login via POST /auth/login — assert JWT token returned
+	•	Create account via POST /accounts with initial_deposit — assert account_number and balance returned
+	•	Fetch account via GET /accounts/{id} — assert correct balance
+
+7.2 Test Money Transfer
+	•	Create two customer accounts (Account A and Account B)
+	•	Fund Account A with initial deposit
+	•	Transfer amount from Account A to Account B via POST /transactions/transfer
+	•	Assert Account A balance decreased by amount
+	•	Assert Account B balance increased by amount
+	•	Assert transaction record created with type = 'transfer'
+	•	Test edge case: transfer amount > balance must return error
+
+7.3 Test Loan Approval (Officer)
+	•	Customer applies for loan via POST /loans/apply — assert status = 'pending'
+	•	Officer logs in and approves via PUT /loans/{id}/approve — assert status = 'approved'
+	•	Test rejection: PUT /loans/{id}/reject — assert status = 'rejected'
+	•	Test unauthorized access: customer attempting to approve must return 403
+
+
+8. Sprint 3 — Microservice Version
+Refactor the monolithic application into five independent microservices. Each service runs in its own Docker container with its own database connection.
+
+8.1 Services
+Service
+Responsibilities
+Auth Service
+Register, Login, JWT token generation and validation
+Account Service
+Create account, freeze account, balance management
+Transaction Service
+Transfer money, deposit/withdraw, transaction logs
+Loan Service
+Apply for loan, approve/reject loan, EMI calculation
+Reporting Service
+Analytics and admin dashboards
+
+8.2 Communication Pattern
+Pattern
+Use Case
+REST (synchronous)
+Direct service-to-service calls (e.g., Transaction Service calls Account Service to check balance)
+Kafka / RabbitMQ (async)
+Transaction events published and consumed asynchronously
+Redis (distributed lock)
+Prevent race conditions in concurrent transactions
+
+8.3 Docker Compose Configuration
+Implement docker-compose.yml with the following services:
+services:
+  auth:
+    build: ./auth-service
+  account:
+    build: ./account-service
+  transaction:
+    build: ./transaction-service
+  loan:
+    build: ./loan-service
+  postgres:
+    image: postgres:14
+  redis:
+    image: redis:alpine
+
+8.4 End-to-End Workflow (Microservices)
+	•	Customer registers via Auth Service
+	•	Customer creates account via Account Service
+	•	Customer transfers money via Transaction Service (uses Redis lock, publishes event)
+	•	Customer applies for loan via Loan Service
+	•	Officer approves loan via Loan Service
+	•	Admin monitors reports via Reporting Service
+
+
+9. Middleware & Infrastructure Requirements
+
+9.1 Middleware to Implement
+Middleware
+File
+Purpose
+CORS
+middleware/cors.py
+Allow cross-origin requests from configured origins
+Logging
+middleware/logging_middleware.py
+Log all incoming requests and responses
+Rate Limiter
+middleware/rate_limiter.py
+Limit requests per IP using Redis
+
+9.2 Exception Handling
+	•	Implement centralized exception handlers in exceptions/exception_handlers.py
+	•	Create custom exception classes in exceptions/custom_exceptions.py
+	•	Handle: 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 422 Validation Error, 500 Internal Server Error
+
+9.3 Environment Configuration (.env)
+Required environment variables:
+DATABASE_URL=postgresql://user:password@localhost/banking_db
+SECRET_KEY=your-jwt-secret-key
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REDIS_URL=redis://localhost:6379
+POSTGRES_USER=banking_user
+POSTGRES_PASSWORD=banking_pass
+POSTGRES_DB=banking_db
+
+
+10. Complete API Reference
+
+Method
+Endpoint
+Role
+Description
+POST
+/auth/register
+Public
+Register new customer
+POST
+/auth/login
+Public
+Login and get JWT token
+PUT
+/users/profile
+Customer
+Update user profile
+DELETE
+/users/profile
+Customer
+Delete user profile
+POST
+/accounts
+Customer
+Create bank account
+GET
+/accounts/{id}
+Customer
+View account details
+PUT
+/accounts/{id}
+Customer
+Update account
+DELETE
+/accounts/{id}
+Admin
+Delete account
+PUT
+/accounts/{id}/freeze
+Admin
+Freeze account
+POST
+/transactions/transfer
+Customer
+Transfer money
+GET
+/transactions
+Customer
+List transactions
+DELETE
+/transactions/{id}
+Admin
+Delete transaction
+POST
+/loans/apply
+Customer
+Apply for loan
+PUT
+/loans/{id}/approve
+Officer
+Approve loan
+PUT
+/loans/{id}/reject
+Officer
+Reject loan
+PUT
+/loans/{id}
+Officer
+Update loan
+DELETE
+/loans/{id}
+Admin
+Delete loan
+GET
+/admin/reports
+Admin
+Get system reports
+
+
+11. Implementation Checklist
+
+Sprint 1 — Core Foundation
+	•	Project structure created per Section 2
+	•	PostgreSQL connected via SQLAlchemy
+	•	Alembic migrations configured
+	•	JWT auth implemented (register + login)
+	•	Accounts CRUD implemented
+	•	Transactions (transfer, deposit, withdrawal) implemented
+	•	Redis locking on transfer endpoint
+	•	Docker + Docker Compose configured
+	•	Integration tests: account creation, money transfer
+
+Sprint 2 — Loan & Role Control
+	•	Loan application endpoint implemented
+	•	Loan approve/reject endpoints (Officer only)
+	•	RBAC dependency injection configured for all roles
+	•	Admin reporting endpoint implemented
+	•	User profile update/delete implemented
+	•	All middleware implemented (CORS, logging, rate limiter)
+	•	Centralized exception handling implemented
+	•	Integration tests: loan approval, RBAC enforcement
+
+Sprint 3 — Microservices
+	•	Auth Service extracted and containerized
+	•	Account Service extracted and containerized
+	•	Transaction Service extracted and containerized
+	•	Loan Service extracted and containerized
+	•	Reporting Service extracted and containerized
+	•	Docker Compose updated with all 5 services + postgres + redis
+	•	Inter-service communication via REST and async messaging
+
+End of Implementation Prompt
