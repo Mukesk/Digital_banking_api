@@ -20,7 +20,7 @@ def generate_account_number():
 def create_account(
     account_in: AccountCreate, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value))
 ):
     new_account = Account(
         user_id=current_user.id,
@@ -37,7 +37,7 @@ def create_account(
 def get_account(
     account_id: UUID, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value))
 ):
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
@@ -51,7 +51,7 @@ def update_account(
     account_id: UUID,
     account_in: AccountUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value))
 ):
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:

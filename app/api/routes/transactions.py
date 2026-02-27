@@ -20,7 +20,7 @@ redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 def transfer_funds(
     transfer_in: TransferRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value))
 ):
     # Find active source account for the user
     source_acc = db.query(Account).filter(Account.user_id == current_user.id, Account.status == "active").first()
@@ -60,7 +60,9 @@ def transfer_funds(
 @router.get("", response_model=List[TransactionResponse])
 def get_transactions(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value)),
+    skip: int = 0,
+    limit: int = 100
 ):
     user_accounts = db.query(Account.id).filter(Account.user_id == current_user.id).all()
     account_ids = [acc.id for acc in user_accounts]
@@ -68,7 +70,7 @@ def get_transactions(
     transactions = db.query(Transaction).filter(
         (Transaction.from_account.in_(account_ids)) | 
         (Transaction.to_account.in_(account_ids))
-    ).order_by(Transaction.created_at.desc()).all()
+    ).order_by(Transaction.created_at.desc()).offset(skip).limit(limit).all()
     
     return transactions
 

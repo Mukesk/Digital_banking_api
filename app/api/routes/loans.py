@@ -15,7 +15,7 @@ router = APIRouter(prefix="/loans", tags=["loans"])
 def apply_loan(
     loan_in: LoanApply,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_role(RoleEnum.customer.value))
 ):
     new_loan = Loan(
         user_id=current_user.id,
@@ -30,13 +30,15 @@ def apply_loan(
 @router.get("", response_model=list[LoanResponse])
 def get_user_loans(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 100
 ):
     # Customer can only see their own loans
     if current_user.role == RoleEnum.customer:
-        return db.query(Loan).filter(Loan.user_id == current_user.id).all()
+        return db.query(Loan).filter(Loan.user_id == current_user.id).offset(skip).limit(limit).all()
     # Officers/Admins can see all
-    return db.query(Loan).all()
+    return db.query(Loan).offset(skip).limit(limit).all()
 
 @router.put("/{loan_id}/approve", response_model=LoanApproveResponse)
 def approve_loan(
